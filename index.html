@@ -85,6 +85,10 @@ h1,h2,h3,p{margin:0}
 .resume small{color:var(--muted);font-weight:500}
 .credit{text-align:center;color:var(--muted);font-size:14px;padding-top:6px}
 .home .credit{margin-top:auto}
+.steps{display:flex;flex-direction:column;gap:10px;padding:0;margin:0;list-style:none}
+.steps li{background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:12px 14px;line-height:1.6}
+.steps b{color:var(--silver)}
+.ok-note{text-align:center;color:var(--pos);font-weight:700;padding:6px}
 
 /* setup */
 .lead{color:var(--muted);margin:2px 0 14px}
@@ -367,6 +371,12 @@ function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(
 function findM(id){ for (var i=0;i<D.history.length;i++) if (D.history[i].id===id) return D.history[i]; return null; }
 function curMatch(g){ return D.cur[g] ? findM(D.cur[g]) : null; }
 
+var installEv = null, justInstalled = false;
+function isStandalone(){
+  try { return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true; }
+  catch(e){ return false; }
+}
+
 var S = {
   screen:'home',
   sheet:null,
@@ -397,7 +407,8 @@ var ICON = {
   menu:'<svg viewBox="0 0 24 24"><path d="M5 7h14M5 12h14M5 17h14"/></svg>',
   chev:'<svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>',
   undo:'<svg viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-3"/></svg>',
-  plus:'<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>'
+  plus:'<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
+  dl:'<svg viewBox="0 0 24 24"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"/></svg>'
 };
 function hintOf(c, v){
   if (c.id==='king') return num(-v.king)+' على من أخذه';
@@ -423,11 +434,16 @@ function homeView(){
   if (k && k.status==='playing' && k.rounds.length>0){
     res += '<button class="btn resume" data-a="resume" data-g="kon"><span>متابعة كونكان</span><small>'+k.rounds.length+' جولة</small></button>';
   }
+  var inst = '';
+  if (justInstalled) inst = '<p class="ok-note">تم تثبيت التطبيق، افتحه من الشاشة الرئيسية</p>';
+  else if (!isStandalone()) inst = installEv ?
+    '<button class="btn" data-a="install">'+ICON.dl+' تثبيت التطبيق</button>' :
+    '<button class="link" data-a="installHelp">كيف أثبّت التطبيق؟</button>';
   return '<main class="home">'+
     '<div class="hero"><img class="logo" src="icon-192.png" width="116" height="116" alt="">'+
     '<h1>تركس وكونكان</h1><p class="sub">حاسبة النقاط</p></div>'+
     '<div class="stack">'+
-      '<button class="btn primary big" data-a="openPick">اختر اللعبة '+ICON.chev+'</button>'+res+
+      '<button class="btn primary big" data-a="openPick">اختر اللعبة '+ICON.chev+'</button>'+res+inst+
       '<button class="link" data-a="history">سجل المباريات</button>'+
     '</div>'+creditHTML()+'</main>';
 }
@@ -736,11 +752,21 @@ function konEndSheet(m){
     '<p class="hint">تم حفظ النتيجة في السجل</p>'+
     '<button class="btn primary big" data-a="newKon">لعبة جديدة</button><button class="btn" data-a="close">عرض النتيجة</button>');
 }
+function installHelpSheet(){
+  return sheetWrap('<h3>تثبيت التطبيق</h3>'+
+    '<ul class="steps">'+
+    '<li><b>كروم (أندرويد):</b> اضغط زر القائمة ⋮ ثم «تثبيت التطبيق» أو «إضافة إلى الشاشة الرئيسية».</li>'+
+    '<li><b>سفاري (آيفون):</b> اضغط زر المشاركة ثم «إضافة إلى الشاشة الرئيسية».</li>'+
+    '</ul>'+
+    '<p class="hint">افتح التطبيق مرة واحدة والإنترنت شغال، وبعدها يعمل بدون نت.</p>'+
+    '<button class="btn primary" data-a="close">تمام</button>');
+}
 function sheetView(){
   var sh = S.sheet; if (!sh) return '';
   var tm = curMatch('trex'), km = curMatch('kon');
   switch (sh.t){
     case 'pick': return pickSheet();
+    case 'installHelp': return installHelpSheet();
     case 'trexPick': return tm ? trexPickSheet(tm) : '';
     case 'entry': return tm ? entrySheet(tm) : '';
     case 'view': return tm ? viewEntrySheet(tm) : '';
@@ -812,6 +838,16 @@ function act(a, ds){
   switch (a){
     case 'close': S.sheet = null; render(); break;
     case 'openPick': S.sheet = { t:'pick' }; render(); break;
+    case 'installHelp': S.sheet = { t:'installHelp' }; render(); break;
+    case 'install':
+      var ev = installEv;
+      if (!ev){ S.sheet = { t:'installHelp' }; render(); break; }
+      installEv = null;
+      try {
+        ev.prompt();
+        if (ev.userChoice && ev.userChoice.then) ev.userChoice.then(function(c){ if (c && c.outcome==='accepted') justInstalled = true; render(); });
+      } catch(x){}
+      render(); break;
     case 'chooseGame': go(ds.g==='trex' ? 'trexSetup' : 'konSetup'); break;
     case 'home': go('home'); break;
     case 'history': go('history'); break;
@@ -898,6 +934,15 @@ document.addEventListener('toggle', function(e){
 }, true);
 document.addEventListener('keydown', function(e){
   if (e.key==='Escape' && S.sheet){ S.sheet = null; render(); }
+});
+
+window.addEventListener('beforeinstallprompt', function(e){
+  e.preventDefault(); installEv = e;
+  if (S.screen==='home' && !S.sheet) render();
+});
+window.addEventListener('appinstalled', function(){
+  installEv = null; justInstalled = true;
+  if (S.screen==='home') render();
 });
 
 try { if (navigator.serviceWorker) navigator.serviceWorker.register('sw.js').catch(function(){}); } catch(e){}
